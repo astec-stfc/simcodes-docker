@@ -12,6 +12,10 @@ jobs:
     name: alma9 simcodes docker
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      packages: write  # required for GHCR access
+
     steps:
       - name: Dump job context
         env:

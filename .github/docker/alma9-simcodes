@@ -6,30 +6,9 @@ WORKDIR /simcodes
 # Requirements
 RUN microdnf install wget dnf -y && microdnf clean all
 
-
-# ASTRA (single code and parallel)
-RUN mkdir Astra-serial &&\
-    cd Astra-serial &&\
-    wget https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/Astra && \
-    wget https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/generator && \
-    chmod +x Astra generator
-
-RUN mkdir Astra-parallel && \
-    cd Astra-parallel && \
-    wget https://www.desy.de/~mpyflo/Parallel_Astra_for_Linux/Astra && \
-    chmod +x Astra Astra
-
-# CSRTRack
-
-RUN mkdir CSRTrack-serial && \
-    cd CSRTrack-serial && \ 
-    wget https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_serial
-
-RUN mkdir CSRTrack-parallel && \
-    cd CSRTrack-parallel && \
-    wget https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_OpenMPI_1.4.3
-
+#########################################################################
 # Elegant
+#########################################################################
 RUN dnf install git gsl-devel fftw-devel lapack blas gfortran mpich mpich-devel -y && \
     dnf group install "Development Tools" -y
 
@@ -47,4 +26,30 @@ RUN git clone https://github.com/rtsoliday/elegant.git &&\
 
 ENV RPN_DEFNS=/elegant/SDDS/defns.rpn
 
+#########################################################################
+# ASTRA (single code and parallel)
+#########################################################################
+
+RUN mkdir Astra-serial &&\
+    cd Astra-serial &&\
+    wget https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/Astra && \
+    wget https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/generator && \
+    chmod +x Astra generator
+
+RUN mkdir Astra-parallel && \
+    cd Astra-parallel && \
+    wget https://www.desy.de/~mpyflo/Parallel_Astra_for_Linux/Astra && \
+    chmod +x Astra Astra
+
+#########################################################################
+# CSRTRack
+#########################################################################
+
+RUN mkdir CSRTrack-serial && \
+    cd CSRTrack-serial && \ 
+    wget https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_serial
+
+RUN mkdir CSRTrack-parallel && \
+    cd CSRTrack-parallel && \
+    wget https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_OpenMPI_1.4.3
 

@@ -9,7 +9,7 @@ on:
 jobs:
 
   simcodes-docker:
-    name: alma9 simcodesdocker
+    name: alma9 simcodes docker
     runs-on: ubuntu-latest
 
     steps:

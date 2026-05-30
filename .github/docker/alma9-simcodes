@@ -11,11 +11,13 @@ RUN microdnf install wget dnf -y && microdnf clean all
 RUN mkdir Astra-serial &&\
     cd Astra-serial &&\
     wget https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/Astra && \
-    wget https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/generator
+    wget https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/generator && \
+    chmod +x Astra generator
 
 RUN mkdir Astra-parallel && \
     cd Astra-parallel && \
-    wget https://www.desy.de/~mpyflo/Parallel_Astra_for_Linux/Astra
+    wget https://www.desy.de/~mpyflo/Parallel_Astra_for_Linux/Astra && \
+    chmod +x Astra Astra
 
 # CSRTRack
 

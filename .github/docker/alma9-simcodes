@@ -53,3 +53,28 @@ RUN mkdir CSRTrack-parallel && \
     cd CSRTrack-parallel && \
     wget https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_OpenMPI_1.4.3
 
+#########################################################################
+# BMAD
+#########################################################################
+
+#RUN dnf install epel-release -y && \
+#    dnf install cmake hdf5-devel cairo-devel pango-devel python3-gobject readline-devel -y 
+
+#RUN wget https://github.com/bmad-sim/bmad-ecosystem/releases/download/20260508-0/bmad_dist.tar.gz && \
+#    tar zxf bmad_dist.tar.gz
+
+#RUN cd bmad_dist_20260508-0 && \
+#    export DIST_BASE_DIR="/simcodes/bmad_dist_20260508-0" && \
+#    source ${DIST_BASE_DIR}/util/dist_source_me && \
+#    ulimit -S -c 0 && \ 
+#    ulimit -S -s 10240 && \ 
+#    ulimit -d unlimited && \ 
+#    util/dist_build_production
+
+#RUN ln -s bmad_dist_20260508-0 bmad
+
+#RUN dnf install pip -y && \
+#    pip install ipython numpy h5py pydantic pytao
+
+#ENV LD_LIBRARY_PATH=/simcodes/bmad_dist_20260508-0/production/lib/
+#ENV DISPLAY=host.docker.internal:0.0

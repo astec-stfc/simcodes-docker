@@ -53,7 +53,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dockerimage: [alma9-simcodes]
+        dockerimage: [simcodes-docker]
 
     permissions:
       contents: read
@@ -87,8 +87,8 @@ jobs:
       - name: Flatten simcodes containers
         shell: bash
         run: |
-          docker pull ghcr.io/${{ github.repository }}:latest 
-          docker run -v ${{ github.workspace }}:/tmp bdsim/alma9-apptainer apptainer build ${{ matrix.dockerimage }}.sif docker:sboogert/${{ matrix.dockerimage }}:${{ github.ref_name }}
+          docker pull bdsim/alma9-apptainer 
+          docker run -v ${{ github.workspace }}:/tmp bdsim/alma9-apptainer apptainer build ${{ matrix.dockerimage }}.sif docker://ghcr.io/astec-stfc/${{ matrix.dockerimage }}:${{ github.ref_name }}
           du -sh ${{ github.workspace }}/*sif
 
       - name: Push to GHCR

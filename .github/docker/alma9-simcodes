@@ -35,76 +35,58 @@ RUN pip install ipython numpy h5py pydantic pytao
 #########################################################################
 # Elegant
 #########################################################################
-#RUN dnf install git gsl-devel fftw-devel lapack blas gfortran mpich mpich-devel -y && \
-#    dnf group install "Development Tools" -y
+RUN dnf install git gsl-devel fftw-devel lapack blas gfortran mpich mpich-devel -y && \
+    dnf group install "Development Tools" -y
 
-#RUN git clone https://github.com/rtsoliday/SDDS.git
+RUN git clone https://github.com/rtsoliday/SDDS.git
 
-#RUN ln -s /lib64/libblas.so.3 /lib64/libblas.so && \
-#    ln -s /lib64/liblapack.so.3 /lib64/liblapack.so
+RUN ln -s /lib64/libblas.so.3 /lib64/libblas.so && \
+    ln -s /lib64/liblapack.so.3 /lib64/liblapack.so
 
-#RUN git clone https://github.com/rtsoliday/elegant.git &&\
-#    cd elegant &&\
-#    git checkout elegant-2026.1.0 &&\
-#    export MPI_PATH=/usr/lib64/mpich && \
-#    export USE_MPI=1 &&\
-#    make
+RUN git clone https://github.com/rtsoliday/elegant.git &&\
+    cd elegant &&\
+    git checkout elegant-2026.1.0 &&\
+    export MPI_PATH=/usr/lib64/mpich && \
+    export USE_MPI=1 &&\
+    make
 
-#ENV RPN_DEFNS=/elegant/SDDS/defns.rpn
+ENV RPN_DEFNS=/elegant/SDDS/defns.rpn
 
 #########################################################################
 # ASTRA (single code and parallel)
 #########################################################################
 
-#RUN mkdir Astra-serial &&\
-#    cd Astra-serial &&\
-#    wget https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/Astra && \
-#    wget https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/generator && \
-#    chmod +x Astra generator
+RUN mkdir Astra-serial &&\
+    cd Astra-serial &&\
+    wget https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/Astra && \
+    wget https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/generator && \
+    chmod +x Astra generator
 
-#RUN mkdir Astra-parallel && \
-#    cd Astra-parallel && \
-#    wget https://www.desy.de/~mpyflo/Parallel_Astra_for_Linux/Astra && \
-#    chmod +x Astra Astra
+RUN dnf install openmpi -y 
+
+RUN mkdir Astra-parallel && \
+    cd Astra-parallel && \
+    wget https://www.desy.de/~mpyflo/Parallel_Astra_for_Linux/Astra && \
+    chmod +x Astra Astra
 
 #########################################################################
 # CSRTRack
 #########################################################################
 
-#RUN mkdir CSRTrack-serial && \
-#    cd CSRTrack-serial && \
-#    wget https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_serial
+RUN mkdir CSRTrack-serial && \
+    cd CSRTrack-serial && \
+    wget https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_serial
 
-#RUN mkdir CSRTrack-parallel && \
-#    cd CSRTrack-parallel && \
-#    wget https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_OpenMPI_1.4.3
+RUN mkdir CSRTrack-parallel && \
+    cd CSRTrack-parallel && \
+    wget https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_OpenMPI_1.4.3
 
 #########################################################################
 # GENSESIS
 #########################################################################
 
+
 #########################################################################
-# BMAD
+# Xwindows path
 #########################################################################
-
-#RUN dnf install epel-release -y && \
-#    dnf install cmake hdf5-devel cairo-devel pango-devel python3-gobject readline-devel -y 
-
-#RUN wget https://github.com/bmad-sim/bmad-ecosystem/releases/download/20260508-0/bmad_dist.tar.gz && \
-#    tar zxf bmad_dist.tar.gz
-
-#RUN cd bmad_dist_20260508-0 && \
-#    export DIST_BASE_DIR="/simcodes/bmad_dist_20260508-0" && \
-#    source ${DIST_BASE_DIR}/util/dist_source_me && \
-#    ulimit -S -c 0 && \ 
-#    ulimit -S -s 10240 && \ 
-#    ulimit -d unlimited && \ 
-#    util/dist_build_production
-
-#RUN ln -s bmad_dist_20260508-0 bmad
-
-#RUN dnf install pip -y && \
-#    pip install ipython numpy h5py pydantic pytao
-
-#ENV LD_LIBRARY_PATH=/simcodes/bmad_dist_20260508-0/production/lib/
-#ENV DISPLAY=host.docker.internal:0.0
+ENV DISPLAY=host.docker.internal:0.0

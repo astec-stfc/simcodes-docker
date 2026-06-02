@@ -9,7 +9,7 @@ RUN microdnf install wget dnf -y && microdnf clean all
 #########################################################################
 # Download and install Miniconda
 #########################################################################
-RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh && \
+RUN wget --no-verbose https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh && \
     bash /tmp/miniconda.sh -b -p /opt/conda && \
     rm /tmp/miniconda.sh
 
@@ -35,12 +35,12 @@ RUN pip install ipython numpy h5py pydantic pytao
 #########################################################################
 # Elegant
 #########################################################################
-RUN dnf install epel-release -y && \
+RUN dnf install epel-release -y -q && \
     dnf config-manager --set-enabled crb
 
-RUN dnf group install "Development Tools" -y
+RUN dnf group install "Development Tools" -y -q 
 
-RUN dnf install git gsl-devel fftw-devel lapack lapack-devel blas blas-devel gfortran mpich mpich-devel hdf5 hdf5-devel libtiff libtiff-devel gd gd-devel -y 
+RUN dnf install git gsl-devel fftw-devel lapack lapack-devel blas blas-devel gfortran mpich mpich-devel hdf5 hdf5-devel libtiff libtiff-devel gd gd-devel -y -q
 
 RUN git clone https://github.com/rtsoliday/SDDS.git && \
     cd SDDS && \ 
@@ -61,15 +61,15 @@ ENV RPN_DEFNS=/simcodes/SDDS/defns.rpn
 
 RUN mkdir Astra-serial &&\
     cd Astra-serial &&\
-    wget https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/Astra && \
-    wget https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/generator && \
+    wget --no-verbose https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/Astra && \
+    wget --no-verbose https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/generator && \
     chmod +x Astra generator
 
-RUN dnf install openmpi -y 
+RUN dnf install openmpi -y -q 
 
 RUN mkdir Astra-parallel && \
     cd Astra-parallel && \
-    wget https://www.desy.de/~mpyflo/Parallel_Astra_for_Linux/Astra && \
+    wget --no-verbose https://www.desy.de/~mpyflo/Parallel_Astra_for_Linux/Astra && \
     chmod +x Astra Astra
 
 #########################################################################
@@ -78,11 +78,11 @@ RUN mkdir Astra-parallel && \
 
 RUN mkdir CSRTrack-serial && \
     cd CSRTrack-serial && \
-    wget https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_serial
+    wget --no-verbose https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_serial
 
 RUN mkdir CSRTrack-parallel && \
     cd CSRTrack-parallel && \
-    wget https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_OpenMPI_1.4.3
+    wget --no-verbose https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_OpenMPI_1.4.3
 
 #########################################################################
 # GENSESIS

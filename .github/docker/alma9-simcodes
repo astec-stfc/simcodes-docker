@@ -100,9 +100,12 @@ RUN wget --no-verbose https://download.open-mpi.org/release/open-mpi/v4.0/openmp
     tar zxf openmpi-4.0.3.tar.gz && \
     mkdir openmpi-4.0.3-install && \ 
     cd openmpi-4.0.3 && \
-    ./configure --prefix=../openmpi-4.0.3-install && \
+    ./configure --prefix=/simcodes/openmpi-4.0.3-install && \
     make -j4 install
+    cd /simcodes/openmpi-4.0.3-install/lib && \
+    ln -s libmpi_usempi_ignore_tkr.so libmpi_usempi.so.40
 
+ENV LD_LIBRARY_PATH=/simcodes/openmpi-4.0.3-install/lib/
 
 #########################################################################
 # Xwindows path

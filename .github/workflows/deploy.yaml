@@ -44,6 +44,8 @@ jobs:
           push: true
           tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+          cache-to: type=inline
 
   apptainer-simcodes:
     name: alma9 simcodes apptainer

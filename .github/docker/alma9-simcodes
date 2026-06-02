@@ -98,7 +98,7 @@ RUN mkdir CSRTrack-parallel && \
 #########################################################################
 RUN wget --no-verbose https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.3.tar.gz && \
     tar zxf openmpi-4.0.3.tar.gz && \
-    mkdir openmpi-4.0.3-install
+    mkdir openmpi-4.0.3-install && \ 
     cd openmpi-4.0.3 && \
     ./configure --prefix=../openmpi-4.0.3-install && \
     make -j4 install

@@ -35,13 +35,16 @@ RUN pip install ipython numpy h5py pydantic pytao
 #########################################################################
 # Elegant
 #########################################################################
-RUN dnf install git gsl-devel fftw-devel lapack blas gfortran mpich mpich-devel -y && \
-    dnf group install "Development Tools" -y
+RUN dnf install epel-release -y && \
+    dnf config-manager --set-enabled crb
 
-RUN git clone https://github.com/rtsoliday/SDDS.git
+RUN dnf group install "Development Tools" -y
 
-RUN ln -s /lib64/libblas.so.3 /lib64/libblas.so && \
-    ln -s /lib64/liblapack.so.3 /lib64/liblapack.so
+RUN dnf install git gsl-devel fftw-devel lapack lapack-devel blas blas-devel gfortran mpich mpich-devel hdf5 hdf5-devel libtiff libtiff-devel gd gd-devel -y 
+
+RUN git clone https://github.com/rtsoliday/SDDS.git && \
+    cd SDDS && \ 
+    make 
 
 RUN git clone https://github.com/rtsoliday/elegant.git &&\
     cd elegant &&\
@@ -50,7 +53,7 @@ RUN git clone https://github.com/rtsoliday/elegant.git &&\
     export USE_MPI=1 &&\
     make
 
-ENV RPN_DEFNS=/elegant/SDDS/defns.rpn
+ENV RPN_DEFNS=/simcodes/SDDS/defns.rpn
 
 #########################################################################
 # ASTRA (single code and parallel)

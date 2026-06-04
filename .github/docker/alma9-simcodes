@@ -3,55 +3,31 @@ FROM almalinux/9-minimal
 ENTRYPOINT ["/bin/bash"]
 WORKDIR /simcodes
 
+#########################################################################
 # Requirements
+#########################################################################
 RUN microdnf install wget dnf -y && microdnf clean all
 
-#########################################################################
-# Download and install Miniconda
-#########################################################################
-RUN wget --no-verbose https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh && \
-    bash /tmp/miniconda.sh -b -p /opt/conda && \
-    rm /tmp/miniconda.sh
-
-# Add conda to PATH
-ENV PATH=/opt/conda/bin:$PATH
-
-# Initialise conda
-RUN conda init bash 
-#    conda update -n base -c defaults conda -y && \
-#    conda clean -afy
-
-# Accept conda ToS
-RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
-    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
-
-#########################################################################
-# BMAD
-#########################################################################
-
-RUN conda install  bmad -c conda-forge -y --quiet
-RUN pip install -q ipython numpy h5py pydantic pytao
-
-#########################################################################
-# Elegant
-#########################################################################
 RUN dnf install epel-release -y -q && \
     dnf config-manager --set-enabled crb
 
 RUN dnf group install "Development Tools" -y -q 
 
-RUN dnf install git gsl-devel fftw-devel lapack lapack-devel blas blas-devel gfortran mpich mpich-devel hdf5 hdf5-devel libtiff libtiff-devel gd gd-devel -y -q
+RUN dnf install cmake git gsl-devel fftw-devel lapack lapack-devel blas blas-devel gfortran mpich mpich-devel openmpi openmpi-devel hdf5 hdf5-devel libtiff libtiff-devel gd gd-devel mold -y -q
 
-RUN git clone https://github.com/rtsoliday/SDDS.git && \
-    cd SDDS && \ 
-    make 
+#########################################################################
+# Elegant
+#########################################################################
+RUN git clone https://github.com/rtsoliday/SDDS.git &&\
+    cd SDDS &&\
+    make -j$(nproc)
 
 RUN git clone https://github.com/rtsoliday/elegant.git &&\
     cd elegant &&\
     git checkout elegant-2026.1.0 &&\
-    export MPI_PATH=/usr/lib64/mpich && \
+    export MPI_PATH=/usr/lib64/openmpi && \
     export USE_MPI=1 &&\
-    make
+    make -j1
 
 ENV RPN_DEFNS=/simcodes/SDDS/defns.rpn
 
@@ -65,12 +41,25 @@ RUN mkdir Astra-serial &&\
     wget --no-verbose https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/generator && \
     chmod +x Astra generator
 
-RUN dnf install openmpi -y -q 
-
 RUN mkdir Astra-parallel && \
     cd Astra-parallel && \
     wget --no-verbose https://www.desy.de/~mpyflo/Parallel_Astra_for_Linux/Astra && \
     chmod +x Astra Astra
+
+#########################################################################
+# OpenMPI 4.0.3 (needed for Astra)
+#########################################################################
+RUN wget --no-verbose https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.3.tar.gz && \
+    tar zxf openmpi-4.0.3.tar.gz && \
+    mkdir openmpi-4.0.3-install && \ 
+    cd openmpi-4.0.3 && \
+    ./configure --prefix=/simcodes/openmpi-4.0.3-install && \
+    make -j$(nproc) install && \
+    cd /simcodes/openmpi-4.0.3-install/lib && \
+    ln -s libmpi_usempi_ignore_tkr.so libmpi_usempi.so.40 && \
+    rm -rf openmpi-4.0.3.tar.gz && \
+    rm -rf openmpi-4.0.3
+ENV LD_LIBRARY_PATH=/simcodes/openmpi-4.0.3-install/lib/
 
 #########################################################################
 # CSRTRack
@@ -84,33 +73,64 @@ RUN mkdir CSRTrack-parallel && \
     cd CSRTrack-parallel && \
     wget --no-verbose https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_OpenMPI_1.4.3
 
-#########################################################################
-# GENESIS
-#########################################################################
-
 
 #########################################################################
-# OpenMPI 4.0.3
+# Genesis
 #########################################################################
-RUN wget --no-verbose https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.3.tar.gz && \
-    tar zxf openmpi-4.0.3.tar.gz && \
-    mkdir openmpi-4.0.3-install && \ 
-    cd openmpi-4.0.3 && \
-    ./configure --prefix=/simcodes/openmpi-4.0.3-install && \
-    make -j4 install && \
-    cd /simcodes/openmpi-4.0.3-install/lib && \
-    ln -s libmpi_usempi_ignore_tkr.so libmpi_usempi.so.40
+#RUN git clone https://github.com/svenreiche/Genesis-1.3-Version4.git && \
+#    mkdir Genesis-1.3-Version4-build && \
+#    mkdir Genesis-1.3-Version4-install && \
+#    cd Genesis-1.3-Version4-build 
+#    cmake -DMPI_C_COMPILER=/usr/lib64/openmpi/bin/mpicc -DMPI_CXX_COMPILER=/usr/lib64/openmpi/bin/mpicxx  -DCMAKE_INSTALL_PREFIX=/simcodes/Genesis-1.3-Version4-install -DMPI_CXX_INCLUDE_DIRS=$(/usr/lib64/openmpi/bin/mpicxx --showme:incdirs) ../Genesis-1.3-Version4 && \
+#    make -j$(nproc)
 
-ENV LD_LIBRARY_PATH=/simcodes/openmpi-4.0.3-install/lib/
+#########################################################################
+# OPAL
+#########################################################################
+
+RUN git clone https://github.com/eth-cscs/h5hut.git && \
+    cd h5hut && \
+    ./autogen.sh && \
+    ./configure --prefix=/usr/local/ && \
+    make -j$(nproc) install 
+
+RUN git clone https://github.com/OPALX-project/OPAL.git && \
+    mkdir OPAL-build && \
+    mkdir OPAL-install 
+#    cd OPAL && \
+#    cmake ../OPAL -DMPI_C_COMPILER=/usr/lib64/openmpi/bin/mpicc -DMPI_CXX_COMPILER=/usr/lib64/openmpi/bin/mpicxx -DCMAKE_INSTALL_PREFIX=/simcodes/OPAL-install/ && \
+#    make -j$(nproc) install 
+    
+#########################################################################
+# Download and install Miniconda
+#########################################################################
+RUN wget --no-verbose https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh && \
+    bash /tmp/miniconda.sh -b -p /opt/conda && \
+    rm /tmp/miniconda.sh
+
+# Add conda to PATH
+ENV PATH=/opt/conda/bin:$PATH
+
+# Initialise conda
+RUN conda init bash 
+##    conda update -n base -c defaults conda -y && \
+##    conda clean -afy
+
+# Accept conda ToS
+RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
+    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+
+#########################################################################
+# BMAD
+#########################################################################
+RUN conda install ipython numpy h5py pydantic bmad pytao -c conda-forge -y --quiet
+
+#########################################################################
+# Genesis
+#########################################################################
+RUN conda install genesis4=4.6.12=mpi_openmpi_h1839dc1_100 -c conda-forge -y --quiet 
 
 #########################################################################
 # Xwindows path
 #########################################################################
 ENV DISPLAY=host.docker.internal:0.0
-
-#########################################################################
-# OPAL
-#########################################################################
-RUN git clone https://github.com/OPALX-project/OPAL.git && \
-    cd OPAL
-

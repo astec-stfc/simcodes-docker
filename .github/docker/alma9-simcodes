@@ -11,16 +11,21 @@ RUN microdnf install wget dnf -y && microdnf clean all
 RUN dnf install epel-release -y -q && \
     dnf config-manager --set-enabled crb
 
-RUN dnf group install "Development Tools" -y -q 
+RUN dnf group install "Development Tools" -y -q
 
-RUN dnf install cmake git gsl-devel fftw-devel lapack lapack-devel blas blas-devel gfortran mpich mpich-devel openmpi openmpi-devel hdf5 hdf5-devel libtiff libtiff-devel gd gd-devel mold -y -q
+RUN dnf install cmake git gsl-devel fftw-devel lapack lapack-devel blas blas-devel gfortran mpich mpich-devel openmpi openmpi-devel hdf5 hdf5-devel hdf5-openmpi hdf5-openmpi-devel boost-devel libtiff libtiff-devel gd gd-devel mold -y -q
+
+# openmpi/hdf5-openmpi install under a non-default prefix (EL9 "environment modules" layout)
+ENV PATH=/usr/lib64/openmpi/bin:$PATH
+ENV LD_LIBRARY_PATH=/usr/lib64/openmpi/lib
+ENV CPATH=/usr/include/openmpi-x86_64
 
 #########################################################################
 # Elegant
 #########################################################################
 RUN git clone https://github.com/rtsoliday/SDDS.git &&\
     cd SDDS &&\
-    make -j$(nproc)
+    make -j4
 
 RUN git clone https://github.com/rtsoliday/elegant.git &&\
     cd elegant &&\
@@ -54,12 +59,12 @@ RUN wget --no-verbose https://download.open-mpi.org/release/open-mpi/v4.0/openmp
     mkdir openmpi-4.0.3-install && \ 
     cd openmpi-4.0.3 && \
     ./configure --prefix=/simcodes/openmpi-4.0.3-install && \
-    make -j$(nproc) install && \
+    make -j4 install && \
     cd /simcodes/openmpi-4.0.3-install/lib && \
     ln -s libmpi_usempi_ignore_tkr.so libmpi_usempi.so.40 && \
     rm -rf openmpi-4.0.3.tar.gz && \
     rm -rf openmpi-4.0.3
-ENV LD_LIBRARY_PATH=/simcodes/openmpi-4.0.3-install/lib/
+ENV LD_LIBRARY_PATH=/simcodes/openmpi-4.0.3-install/lib/:/usr/lib64/openmpi/lib:/usr/local/lib
 
 #########################################################################
 # CSRTRack
@@ -67,40 +72,57 @@ ENV LD_LIBRARY_PATH=/simcodes/openmpi-4.0.3-install/lib/
 
 RUN mkdir CSRTrack-serial && \
     cd CSRTrack-serial && \
-    wget --no-verbose https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_serial
+    wget --no-verbose https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_serial && \
+    chmod +x csrtrack_1.204_Linux_x86_64_serial
 
 RUN mkdir CSRTrack-parallel && \
     cd CSRTrack-parallel && \
-    wget --no-verbose https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_OpenMPI_1.4.3
-
-
-#########################################################################
-# Genesis
-#########################################################################
-#RUN git clone https://github.com/svenreiche/Genesis-1.3-Version4.git && \
-#    mkdir Genesis-1.3-Version4-build && \
-#    mkdir Genesis-1.3-Version4-install && \
-#    cd Genesis-1.3-Version4-build 
-#    cmake -DMPI_C_COMPILER=/usr/lib64/openmpi/bin/mpicc -DMPI_CXX_COMPILER=/usr/lib64/openmpi/bin/mpicxx  -DCMAKE_INSTALL_PREFIX=/simcodes/Genesis-1.3-Version4-install -DMPI_CXX_INCLUDE_DIRS=$(/usr/lib64/openmpi/bin/mpicxx --showme:incdirs) ../Genesis-1.3-Version4 && \
-#    make -j$(nproc)
+    wget --no-verbose https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_OpenMPI_1.4.3 && \
+    chmod +x csrtrack_1.204_Linux_x86_64_OpenMPI_1.4.3
 
 #########################################################################
 # OPAL
 #########################################################################
+# Built against the from-source OpenMPI 4.0.3 (above), not the distro openmpi
+# package: EL9's openmpi+pmix RPM combo segfaults/fails MPI_Init at runtime
+# (a distro packaging bug, reproducible even with a trivial MPI program), so
+# anything that needs to actually run MPI code must avoid it.
+#
+# NOTE: do not name these OMPI_CC/OMPI_CXX/OMPI_FC - those are reserved
+# env vars that OpenMPI's own mpicc/mpicxx/mpifort wrappers read at runtime
+# to pick their underlying compiler. Pointing them at mpicc itself makes
+# every invocation of mpicc re-invoke mpicc, forever (a fork bomb).
+ENV MPICC_BIN=/simcodes/openmpi-4.0.3-install/bin/mpicc
+ENV MPICXX_BIN=/simcodes/openmpi-4.0.3-install/bin/mpicxx
+ENV MPIFC_BIN=/simcodes/openmpi-4.0.3-install/bin/mpifort
 
 RUN git clone https://github.com/eth-cscs/h5hut.git && \
     cd h5hut && \
     ./autogen.sh && \
-    ./configure --prefix=/usr/local/ && \
-    make -j$(nproc) install 
+    CC=$MPICC_BIN CXX=$MPICXX_BIN ./configure --prefix=/usr/local/ --enable-parallel --with-pic && \
+    make -j4 -C src install
 
 RUN git clone https://github.com/OPALX-project/OPAL.git && \
-    mkdir OPAL-build && \
-    mkdir OPAL-install 
-#    cd OPAL && \
-#    cmake ../OPAL -DMPI_C_COMPILER=/usr/lib64/openmpi/bin/mpicc -DMPI_CXX_COMPILER=/usr/lib64/openmpi/bin/mpicxx -DCMAKE_INSTALL_PREFIX=/simcodes/OPAL-install/ && \
-#    make -j$(nproc) install 
-    
+    cd OPAL && \
+    git checkout OPAL-2024.1.0 && \
+    mkdir -p /simcodes/OPAL-build && \
+    cd /simcodes/OPAL-build && \
+    CC=$MPICC_BIN CXX=$MPICXX_BIN FC=$MPIFC_BIN cmake \
+        -DCMAKE_INSTALL_PREFIX=/simcodes/OPAL-install \
+        -DCMAKE_BUILD_TYPE=RELEASE \
+        -DHDF5_ROOT=/usr/lib64/openmpi \
+        -DWILL_BUILD_SHARED_LIBRARY=ON \
+        -DCMAKE_CXX_FLAGS=-DOMPI_SKIP_MPICXX \
+        "-DCMAKE_EXE_LINKER_FLAGS=-L/simcodes/openmpi-4.0.3-install/lib -lopen-pal -lopen-rte" \
+        -DENABLE_AMR=OFF \
+        -DENABLE_AMR_MG_SOLVER=OFF \
+        -DENABLE_SAAMG_SOLVER=OFF \
+        -DENABLE_OPAL_FEL=OFF \
+        -DBUILD_OPAL_UNIT_TESTS=OFF \
+        /simcodes/OPAL && \
+    make -j4 && \
+    make install
+
 #########################################################################
 # Download and install Miniconda
 #########################################################################
@@ -110,6 +132,9 @@ RUN wget --no-verbose https://repo.anaconda.com/miniconda/Miniconda3-latest-Linu
 
 # Add conda to PATH
 ENV PATH=/opt/conda/bin:$PATH
+# Astra-parallel is linked against HDF5 1.14 (libhdf5.so.310); EL9 only ships 1.12,
+# but conda's genesis4 package pulls in a matching HDF5, so reuse it here.
+ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/conda/lib
 
 # Initialise conda
 RUN conda init bash 
@@ -128,7 +153,48 @@ RUN conda install ipython numpy h5py pydantic bmad pytao -c conda-forge -y --qui
 #########################################################################
 # Genesis
 #########################################################################
-RUN conda install genesis4=4.6.12=mpi_openmpi_h1839dc1_100 -c conda-forge -y --quiet 
+RUN conda install genesis4=4.6.12=mpi_openmpi_h1839dc1_100 -c conda-forge -y --quiet && \
+    mkdir -p /simcodes/Genesis && \
+    ln -s /opt/conda/bin/genesis4 /simcodes/Genesis/genesis4
+
+#########################################################################
+# Python simulation packages required by SIMBA
+#########################################################################
+RUN /opt/conda/bin/pip install --no-cache-dir --quiet \
+    "ocelot-desy==25.06.0" \
+    "xsuite>=0.39.0" \
+    "cheetah-accelerator>=0.7.5" \
+    "Wake-T>=0.8.0" \
+    "cpymad>=1.16.0"
+
+#########################################################################
+# Verify every code/package installed above is actually usable
+#########################################################################
+# Note: CSRTrack-parallel is linked against OpenMPI 1.4.3 (soname libmpi.so.0),
+# an ABI no longer available on any current distro; it isn't wired into SIMBA's
+# docker/apptainer Executables.yaml (only serial CSRTrack is), so it's kept for
+# reference but excluded from this executability gate.
+RUN set -e; \
+    for f in \
+        /simcodes/Astra-serial/Astra /simcodes/Astra-serial/generator /simcodes/Astra-parallel/Astra \
+        /simcodes/CSRTrack-serial/csrtrack_1.204_Linux_x86_64_serial \
+        /simcodes/elegant/bin/Linux-x86_64/elegant /simcodes/elegant/bin/Linux-x86_64/Pelegant \
+        /simcodes/OPAL-install/bin/opal /simcodes/Genesis/genesis4; \
+    do \
+        test -x "$f" || { echo "NOT EXECUTABLE: $f"; exit 1; }; \
+        if ldd "$f" 2>&1 | grep -q "not found"; then \
+            echo "MISSING SHARED LIBRARIES for $f:"; ldd "$f"; exit 1; \
+        fi; \
+    done; \
+    echo "All simulation code binaries present, executable, and fully linked"
+
+RUN /opt/conda/bin/python3 -c "\
+import ocelot, xsuite, cheetah, wake_t, cpymad; \
+print('ocelot', ocelot.__version__); \
+print('xsuite', xsuite.__version__); \
+print('cheetah', cheetah.__version__); \
+print('wake_t OK'); \
+print('cpymad', cpymad.__version__)"
 
 #########################################################################
 # Xwindows path

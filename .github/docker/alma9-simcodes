@@ -114,7 +114,7 @@ RUN git clone https://github.com/OPALX-project/OPAL.git && \
         -DWILL_BUILD_SHARED_LIBRARY=ON \
         -DCMAKE_CXX_FLAGS=-DOMPI_SKIP_MPICXX \
         "-DCMAKE_EXE_LINKER_FLAGS=-L/simcodes/openmpi-4.0.3-install/lib -lopen-pal -lopen-rte" \
-        -DENABLE_AMR=OFF \
+        -DENABLE_AMR=ON \
         -DENABLE_AMR_MG_SOLVER=OFF \
         -DENABLE_SAAMG_SOLVER=OFF \
         -DENABLE_OPAL_FEL=OFF \

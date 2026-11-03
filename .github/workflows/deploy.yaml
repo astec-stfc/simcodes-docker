@@ -39,7 +39,35 @@ jobs:
       - name: Check out the repo
         uses: actions/checkout@v4
 
-      - name: Build and push Docker image
+      - name: Free disk space
+        # the image is about 17 GB and is built, loaded for the test and pushed from the same runner
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: true
+          swap-storage: true
+
+      - name: Build Docker image (for the test; pushed below)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./.github/docker/alma9-simcodes
+          load: true
+          tags: simcodes-docker:test
+          cache-from: |
+            type=gha
+            type=registry,ref=ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test the image
+        run: |
+          docker run --rm -v "${{ github.workspace }}/.github/tests:/tests:ro" --entrypoint bash simcodes-docker:test /tests/smoke.sh
+
+      - name: Push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -47,9 +75,7 @@ jobs:
           push: true
           tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: |
-            type=gha
-            type=registry,ref=ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+          cache-from: type=gha
           cache-to: type=gha,mode=max
 
   apptainer-simcodes:

@@ -37,18 +37,29 @@ RUN git clone https://github.com/rtsoliday/elegant.git &&\
 ENV RPN_DEFNS=/simcodes/SDDS/defns.rpn
 
 #########################################################################
+# ASTRA and CSRTrack come from DESY's user pages, which are down at times
+#########################################################################
+# fetch-desy downloads a file and keeps the download only if its sha256 is the one in vendor/desy/SHA256SUMS; if DESY does
+# not answer, or answers with another file, it uses the known-good copy in vendor/desy and says so in the build log.
+# --build-arg FETCH_DESY_SKIP=1 does not try DESY at all.
+COPY vendor/desy /vendor/desy
+COPY .github/docker/fetch-desy.sh /usr/local/bin/fetch-desy
+ARG FETCH_DESY_SKIP=0
+RUN chmod +x /usr/local/bin/fetch-desy
+
+#########################################################################
 # ASTRA (single code and parallel)
 #########################################################################
 
 RUN mkdir Astra-serial &&\
     cd Astra-serial &&\
-    wget --no-verbose https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/Astra && \
-    wget --no-verbose https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/generator && \
+    fetch-desy astra-serial/Astra https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/Astra && \
+    fetch-desy astra-serial/generator https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/generator && \
     chmod +x Astra generator
 
 RUN mkdir Astra-parallel && \
     cd Astra-parallel && \
-    wget --no-verbose https://www.desy.de/~mpyflo/Parallel_Astra_for_Linux/Astra && \
+    fetch-desy astra-parallel/Astra https://www.desy.de/~mpyflo/Parallel_Astra_for_Linux/Astra && \
     chmod +x Astra Astra
 
 #########################################################################
@@ -72,12 +83,12 @@ ENV LD_LIBRARY_PATH=/simcodes/openmpi-4.0.3-install/lib/:/usr/lib64/openmpi/lib:
 
 RUN mkdir CSRTrack-serial && \
     cd CSRTrack-serial && \
-    wget --no-verbose https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_serial && \
+    fetch-desy csrtrack-serial/csrtrack_1.204_Linux_x86_64_serial https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_serial && \
     chmod +x csrtrack_1.204_Linux_x86_64_serial
 
 RUN mkdir CSRTrack-parallel && \
     cd CSRTrack-parallel && \
-    wget --no-verbose https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_OpenMPI_1.4.3 && \
+    fetch-desy csrtrack-parallel/csrtrack_1.204_Linux_x86_64_OpenMPI_1.4.3 https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_OpenMPI_1.4.3 && \
     chmod +x csrtrack_1.204_Linux_x86_64_OpenMPI_1.4.3
 
 #########################################################################
@@ -195,6 +206,24 @@ print('xsuite', xsuite.__version__); \
 print('cheetah', cheetah.__version__); \
 print('wake_t OK'); \
 print('cpymad', cpymad.__version__)"
+
+#########################################################################
+# SIMBA layout: SIMBA can run inside this image with `simcodes=/simba-codes` and no container runtime
+#########################################################################
+# SIMBA looks for its codes under <simcodes>/<NAME>/ (the `posix` section of its Executables.yaml); the codes above
+# are built under other names, so the directories SIMBA expects are links to them.  `elegant` and `Pelegant` are
+# looked up on PATH.  The OPAL profile script that SIMBA sources has nothing to set: the image has the environment.
+RUN mkdir -p /simba-codes/OPAL/bin /simba-codes/OPAL/etc/profile.d && \
+    ln -s /simcodes/Astra-serial /simba-codes/ASTRA && \
+    ln -s /simcodes/CSRTrack-serial /simba-codes/CSRTrack && \
+    ln -s /simcodes/Genesis /simba-codes/Genesis && \
+    ln -s /opt/conda /simba-codes/Bmad && \
+    ln -s /simcodes/OPAL-install/bin/opal /simba-codes/OPAL/bin/opal && \
+    echo "# nothing to set: the image has the environment" > /simba-codes/OPAL/etc/profile.d/opal.sh && \
+    ln -s /simcodes/elegant/bin/Linux-x86_64/elegant /usr/local/bin/elegant && \
+    ln -s /simcodes/elegant/bin/Linux-x86_64/Pelegant /usr/local/bin/Pelegant
+ENV SIMCODES=/simba-codes
+ENV TAO_DIR=/opt/conda/share/doc/tao/
 
 #########################################################################
 # Xwindows path

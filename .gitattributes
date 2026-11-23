@@ -1,0 +1,4 @@
+# bash cannot read CRLF
+*.sh text eol=lf
+# the vendored binaries are checked by sha256 and must reach the build byte for byte
+vendor/desy/*/* -text

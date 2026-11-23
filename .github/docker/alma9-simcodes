@@ -1,6 +1,7 @@
-FROM almalinux/9-minimal
+# Two stages: `build` compiles everything; the final image gets only what the codes need at run time (their
+# install trees and the shared libraries they link), not the compilers, the sources or the build trees.
+FROM almalinux/9-minimal AS build
 
-ENTRYPOINT ["/bin/bash"]
 WORKDIR /simcodes
 
 #########################################################################
@@ -37,18 +38,29 @@ RUN git clone https://github.com/rtsoliday/elegant.git &&\
 ENV RPN_DEFNS=/simcodes/SDDS/defns.rpn
 
 #########################################################################
+# ASTRA and CSRTrack come from DESY's user pages, which are down at times
+#########################################################################
+# fetch-desy downloads a file and keeps the download only if its sha256 is the one in vendor/desy/SHA256SUMS; if DESY does
+# not answer, or answers with another file, it uses the known-good copy in vendor/desy and says so in the build log.
+# --build-arg FETCH_DESY_SKIP=1 does not try DESY at all.
+COPY vendor/desy /vendor/desy
+COPY .github/docker/fetch-desy.sh /usr/local/bin/fetch-desy
+ARG FETCH_DESY_SKIP=0
+RUN chmod +x /usr/local/bin/fetch-desy
+
+#########################################################################
 # ASTRA (single code and parallel)
 #########################################################################
 
 RUN mkdir Astra-serial &&\
     cd Astra-serial &&\
-    wget --no-verbose https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/Astra && \
-    wget --no-verbose https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/generator && \
+    fetch-desy astra-serial/Astra https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/Astra && \
+    fetch-desy astra-serial/generator https://www.desy.de/~mpyflo/Astra_for_64_Bit_Linux/generator && \
     chmod +x Astra generator
 
 RUN mkdir Astra-parallel && \
     cd Astra-parallel && \
-    wget --no-verbose https://www.desy.de/~mpyflo/Parallel_Astra_for_Linux/Astra && \
+    fetch-desy astra-parallel/Astra https://www.desy.de/~mpyflo/Parallel_Astra_for_Linux/Astra && \
     chmod +x Astra Astra
 
 #########################################################################
@@ -72,12 +84,12 @@ ENV LD_LIBRARY_PATH=/simcodes/openmpi-4.0.3-install/lib/:/usr/lib64/openmpi/lib:
 
 RUN mkdir CSRTrack-serial && \
     cd CSRTrack-serial && \
-    wget --no-verbose https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_serial && \
+    fetch-desy csrtrack-serial/csrtrack_1.204_Linux_x86_64_serial https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_serial && \
     chmod +x csrtrack_1.204_Linux_x86_64_serial
 
 RUN mkdir CSRTrack-parallel && \
     cd CSRTrack-parallel && \
-    wget --no-verbose https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_OpenMPI_1.4.3 && \
+    fetch-desy csrtrack-parallel/csrtrack_1.204_Linux_x86_64_OpenMPI_1.4.3 https://www.desy.de/xfel-beam/csrtrack/files/csrtrack_1.204_Linux_x86_64_OpenMPI_1.4.3 && \
     chmod +x csrtrack_1.204_Linux_x86_64_OpenMPI_1.4.3
 
 #########################################################################
@@ -124,6 +136,44 @@ RUN git clone https://github.com/OPALX-project/OPAL.git && \
     make install
 
 #########################################################################
+#########################################################################
+# The image: run-time libraries, the installed codes, and conda
+#########################################################################
+#########################################################################
+FROM almalinux/9-minimal
+
+ENTRYPOINT ["/bin/bash"]
+WORKDIR /simcodes
+
+# the shared libraries the compiled codes link (checked by the ldd gate below; mpich is Pelegant's MPI, libibverbs
+# and librdmacm are for OpenMPI's plugins); OpenMPI 4 will not start even a local run without an ssh client; gcc is
+# for Xsuite, which compiles its C kernels at run time.
+# hdf5-openmpi, not hdf5: the serial library has the same soname, so ldd is happy with it, but H5hut (in OPAL) then
+# lacks H5Pset_fapl_mpio and OPAL dies at its first write.  Its libmpi.so.40 resolves to OpenMPI 4.0.3 (first on
+# LD_LIBRARY_PATH), not to the distro OpenMPI it pulls in (see the OPAL note in the build stage).
+RUN microdnf install wget dnf -y && microdnf clean all && \
+    dnf install epel-release -y -q && \
+    dnf config-manager --set-enabled crb && \
+    dnf install -y -q \
+        blas lapack fftw-libs-double libgfortran libgomp libquadmath gsl hdf5-openmpi mpich libibverbs librdmacm \
+        boost-chrono boost-filesystem boost-iostreams boost-regex boost-serialization boost-system boost-timer \
+        openssh-clients gcc && \
+    dnf clean all
+
+ENV LD_LIBRARY_PATH=/simcodes/openmpi-4.0.3-install/lib/:/usr/lib64/openmpi/lib:/usr/local/lib
+ENV RPN_DEFNS=/simcodes/SDDS/defns.rpn
+
+COPY --from=build /simcodes/SDDS/defns.rpn /simcodes/SDDS/defns.rpn
+COPY --from=build /simcodes/elegant/bin/Linux-x86_64 /simcodes/elegant/bin/Linux-x86_64
+COPY --from=build /simcodes/Astra-serial /simcodes/Astra-serial
+COPY --from=build /simcodes/Astra-parallel /simcodes/Astra-parallel
+COPY --from=build /simcodes/CSRTrack-serial /simcodes/CSRTrack-serial
+COPY --from=build /simcodes/CSRTrack-parallel /simcodes/CSRTrack-parallel
+COPY --from=build /simcodes/openmpi-4.0.3-install /simcodes/openmpi-4.0.3-install
+COPY --from=build /simcodes/OPAL-install /simcodes/OPAL-install
+COPY --from=build /usr/local/lib /usr/local/lib
+
+#########################################################################
 # Download and install Miniconda
 #########################################################################
 RUN wget --no-verbose https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh && \
@@ -148,19 +198,24 @@ RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkg
 #########################################################################
 # BMAD
 #########################################################################
-RUN conda install ipython numpy h5py pydantic bmad pytao -c conda-forge -y --quiet
+# conda clean: the downloaded package tarballs would otherwise stay in the image
+RUN conda install ipython numpy h5py pydantic bmad pytao -c conda-forge -y --quiet && \
+    conda clean -afy
 
 #########################################################################
 # Genesis
 #########################################################################
 RUN conda install genesis4=4.6.12=mpi_openmpi_h1839dc1_100 -c conda-forge -y --quiet && \
+    conda clean -afy && \
     mkdir -p /simcodes/Genesis && \
     ln -s /opt/conda/bin/genesis4 /simcodes/Genesis/genesis4
 
 #########################################################################
 # Python simulation packages required by SIMBA
 #########################################################################
-RUN /opt/conda/bin/pip install --no-cache-dir --quiet \
+# Cheetah needs torch, and torch from PyPI brings the CUDA libraries (several GB); the image runs on CPUs
+RUN /opt/conda/bin/pip install --no-cache-dir --quiet torch --index-url https://download.pytorch.org/whl/cpu && \
+    /opt/conda/bin/pip install --no-cache-dir --quiet \
     "ocelot-desy==25.06.0" \
     "xsuite>=0.39.0" \
     "cheetah-accelerator>=0.7.5" \
@@ -182,8 +237,8 @@ RUN set -e; \
         /simcodes/OPAL-install/bin/opal /simcodes/Genesis/genesis4; \
     do \
         test -x "$f" || { echo "NOT EXECUTABLE: $f"; exit 1; }; \
-        if ldd "$f" 2>&1 | grep -q "not found"; then \
-            echo "MISSING SHARED LIBRARIES for $f:"; ldd "$f"; exit 1; \
+        if ldd -r "$f" 2>&1 | grep -qE "not found|undefined symbol"; then \
+            echo "MISSING SHARED LIBRARIES OR SYMBOLS for $f:"; ldd -r "$f"; exit 1; \
         fi; \
     done; \
     echo "All simulation code binaries present, executable, and fully linked"
@@ -197,6 +252,28 @@ print('wake_t OK'); \
 print('cpymad', cpymad.__version__)"
 
 #########################################################################
+# SIMBA layout: SIMBA can run inside this image with `simcodes=/simba-codes` and no container runtime
+#########################################################################
+# SIMBA looks for its codes under <simcodes>/<NAME>/ (the `posix` section of its Executables.yaml); the codes above
+# are built under other names, so the directories SIMBA expects are links to them.  `elegant` and `Pelegant` are
+# looked up on PATH.  The OPAL profile script that SIMBA sources has nothing to set: the image has the environment.
+RUN mkdir -p /simba-codes/OPAL/bin /simba-codes/OPAL/etc/profile.d && \
+    ln -s /simcodes/Astra-serial /simba-codes/ASTRA && \
+    ln -s /simcodes/CSRTrack-serial /simba-codes/CSRTrack && \
+    ln -s /simcodes/Genesis /simba-codes/Genesis && \
+    ln -s /opt/conda /simba-codes/Bmad && \
+    ln -s /simcodes/OPAL-install/bin/opal /simba-codes/OPAL/bin/opal && \
+    echo "# nothing to set: the image has the environment" > /simba-codes/OPAL/etc/profile.d/opal.sh && \
+    ln -s /simcodes/elegant/bin/Linux-x86_64/elegant /usr/local/bin/elegant && \
+    ln -s /simcodes/elegant/bin/Linux-x86_64/Pelegant /usr/local/bin/Pelegant
+ENV SIMCODES=/simba-codes
+ENV TAO_DIR=/opt/conda/share/doc/tao/
+
+#########################################################################
 # Xwindows path
 #########################################################################
 ENV DISPLAY=host.docker.internal:0.0
+
+# numba (Wake-T) caches its JIT next to the source, which a non-root user (`docker run --user`) cannot write.  Last,
+# so no build step creates the directory as root.
+ENV NUMBA_CACHE_DIR=/tmp/numba-cache

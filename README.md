@@ -4,6 +4,10 @@ The simulation codes that [SIMBA](https://github.com/astec-stfc/simba) drives, i
 (`ghcr.io/astec-stfc/simcodes-docker:<tag>`, built by `.github/workflows/deploy.yaml`, which also flattens it to an
 Apptainer image). With it a machine needs Docker and nothing else, except for GPT.
 
+The codes are compiled in a `build` stage; the image keeps only their install trees and the libraries they link
+(about 5 GB, most of it the conda environment). Running the workflow by hand on `master` publishes `:master`, which
+moves; publishing a GitHub release publishes `:<release tag>`, which does not, so pin that for reproducible runs.
+
 ## Available codes
 
 Compiled, under `/simcodes`:

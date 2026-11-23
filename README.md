@@ -23,8 +23,10 @@ Compiled, under `/simcodes`:
 Python, in the image's own Python (`/opt/conda/bin/python`, first on `PATH`):
 
  * [Bmad](https://www.classe.cornell.edu/bmad/) with Tao, through `pytao`
- * [Ocelot](https://github.com/ocelot-collab/ocelot), [Xsuite](https://github.com/xsuite), [Cheetah](https://github.com/desy-ml/cheetah),
-   [Wake-T](https://github.com/AngelFP/Wake-T) and [MAD-X](https://github.com/MethodicalAcceleratorDesign/MAD-X) through `cpymad`
+ * [SIMBA](https://github.com/astec-stfc/simba) itself (the latest release at build time), with its `simcodes` extra:
+   [Ocelot](https://github.com/ocelot-collab/ocelot), [Xsuite](https://github.com/xsuite), [Cheetah](https://github.com/desy-ml/cheetah),
+   [Wake-T](https://github.com/AngelFP/Wake-T) and [MAD-X](https://github.com/MethodicalAcceleratorDesign/MAD-X) through `cpymad`,
+   at the versions that SIMBA release asks for (`--build-arg SIMBA_SPEC=...` picks another)
 
 [GPT](https://www.pulsar.nl/gpt/) is licensed and is not in the image.
 
@@ -33,10 +35,10 @@ Python, in the image's own Python (`/opt/conda/bin/python`, first on `PATH`):
 From SIMBA on the host, with the compiled codes in the image (the Python codes then run in the host's Python):
 
 ```python
-Framework(directory=..., container_runtime="docker")   # SIMBA runs `docker run ... ghcr.io/astec-stfc/simcodes-docker:master`
+Framework(directory=..., container_runtime="docker")   # SIMBA runs `docker run ... ghcr.io/astec-stfc/simcodes-docker:<tag>`
 ```
 
-Inside the image, with SIMBA installed into the image's Python: nothing runs in a second container, and the Python
+Inside the image, with the image's SIMBA: nothing runs in a second container, and the Python
 codes are the image's. `SIMCODES=/simba-codes` holds links named as SIMBA expects its `posix` layout (`ASTRA/Astra`,
 `CSRTrack/...`, `OPAL/bin/opal`, `Genesis/genesis4`, `Bmad/lib/libtao.so`), `elegant` and `Pelegant` are on `PATH`, and
 `TAO_DIR` is set:
@@ -68,5 +70,5 @@ files came from and how to replace one.
 ## Known issues
 
  * Pelegant is linked against MPICH, but the `mpiexec` first on `PATH` is the OpenMPI 5 one of the conda environment, so
-   `mpiexec -np 2 Pelegant` fails. `/usr/lib64/mpich/bin/mpiexec` launches it. SIMBA's docker command for Pelegant uses `mpiexec`
-   from `PATH`. The smoke test reports this as a warning.
+   `mpiexec -np 2 Pelegant` fails. `/usr/lib64/mpich/bin/mpiexec` launches it, and is what SIMBA's `Executables.yaml` uses
+   (SIMBA versions that still call plain `mpiexec` cannot run Pelegant in the image).

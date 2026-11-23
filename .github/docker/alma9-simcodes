@@ -30,7 +30,7 @@ RUN git clone https://github.com/rtsoliday/SDDS.git &&\
 
 RUN git clone https://github.com/rtsoliday/elegant.git &&\
     cd elegant &&\
-    git checkout elegant-2026.1.0 &&\
+    git checkout elegant-2026.4.0 &&\
     export MPI_PATH=/usr/lib64/openmpi && \
     export USE_MPI=1 &&\
     make -j1
@@ -205,22 +205,24 @@ RUN conda install ipython numpy h5py pydantic bmad pytao -c conda-forge -y --qui
 #########################################################################
 # Genesis
 #########################################################################
-RUN conda install genesis4=4.6.12=mpi_openmpi_h1839dc1_100 -c conda-forge -y --quiet && \
+# this build, not the other mpi_openmpi one: it keeps HDF5 1.14 (libhdf5.so.310), which Astra-parallel borrows from
+# /opt/conda/lib; the other is on HDF5 2.x
+RUN conda install genesis4=4.6.16=mpi_openmpi_h3002a45_100 -c conda-forge -y --quiet && \
     conda clean -afy && \
     mkdir -p /simcodes/Genesis && \
     ln -s /opt/conda/bin/genesis4 /simcodes/Genesis/genesis4
 
 #########################################################################
-# Python simulation packages required by SIMBA
+# SIMBA and the Python simulation codes
 #########################################################################
-# Cheetah needs torch, and torch from PyPI brings the CUDA libraries (several GB); the image runs on CPUs
+# SIMBA's own `simcodes` extra (Ocelot, Xsuite, Cheetah, Wake-T, cpymad, ...), so the image has the versions SIMBA
+# asks for, and SIMBA itself for running inside the image.  The latest release by default; e.g.
+# --build-arg SIMBA_SPEC="simba-accelerator[simcodes]==0.7.2", or a git URL, for another.
+# Cheetah needs torch, and torch from PyPI brings the CUDA libraries (several GB); the image runs on CPUs, so the CPU
+# build goes in first and pip keeps it.
+ARG SIMBA_SPEC="simba-accelerator[simcodes]"
 RUN /opt/conda/bin/pip install --no-cache-dir --quiet torch --index-url https://download.pytorch.org/whl/cpu && \
-    /opt/conda/bin/pip install --no-cache-dir --quiet \
-    "ocelot-desy==25.06.0" \
-    "xsuite>=0.39.0" \
-    "cheetah-accelerator>=0.7.5" \
-    "Wake-T>=0.8.0" \
-    "cpymad>=1.16.0"
+    /opt/conda/bin/pip install --no-cache-dir --quiet "$SIMBA_SPEC"
 
 #########################################################################
 # Verify every code/package installed above is actually usable
@@ -244,7 +246,9 @@ RUN set -e; \
     echo "All simulation code binaries present, executable, and fully linked"
 
 RUN /opt/conda/bin/python3 -c "\
-import ocelot, xsuite, cheetah, wake_t, cpymad; \
+import ocelot, xsuite, cheetah, wake_t, cpymad, torch, importlib.metadata as md, simba.Framework; \
+assert not torch.cuda.is_available() and '+cpu' in torch.__version__, torch.__version__; \
+print('simba', md.version('simba-accelerator')); \
 print('ocelot', ocelot.__version__); \
 print('xsuite', xsuite.__version__); \
 print('cheetah', cheetah.__version__); \

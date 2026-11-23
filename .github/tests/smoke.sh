@@ -40,10 +40,9 @@ EOF
 
 #### compiled codes
 step "elegant tracks a beam and writes its twiss file" bash -c "$E/elegant track.ele && test -s fodo.twi"
-# Pelegant is linked against MPICH; its own mpiexec is the one that has to launch it
-MPICH_MPIEXEC=$(dirname "$(ldd $E/Pelegant | awk '/libmpi/ {print $3; exit}')")/../bin/mpiexec
-step "Pelegant tracks the same beam on 2 MPI ranks (MPICH mpiexec)" "$MPICH_MPIEXEC" -np 2 $E/Pelegant track.ele
-warn "Pelegant with the mpiexec on PATH, which is what SIMBA's docker command uses" mpiexec --allow-run-as-root --oversubscribe -np 2 $E/Pelegant track.ele
+# Pelegant is linked against MPICH, so MPICH's mpiexec has to launch it (the one on PATH is conda's OpenMPI); this is
+# the path SIMBA's Executables.yaml uses
+step "Pelegant tracks the same beam on 2 MPI ranks (MPICH mpiexec, as SIMBA runs it)" /usr/lib64/mpich/bin/mpiexec -np 2 $E/Pelegant track.ele
 
 cat > beam.in <<'EOF'
 &INPUT

@@ -40,7 +40,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Free disk space
-        # the build stage is about 17 GB (the image itself about 5 GB) and is built, loaded for the test and pushed
+        # the build stage is about 17 GB (the image itself about 7 GB) and is built, loaded for the test and pushed
         # from the same runner
         uses: jlumbroso/free-disk-space@main
         with:

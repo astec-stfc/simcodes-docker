@@ -75,6 +75,32 @@ starts() {  # starts PATTERN COMMAND...
 }
 step "CSRTrack starts" bash -c "$(declare -f starts); starts 'csr' /simcodes/CSRTrack-serial/csrtrack_1.204_Linux_x86_64_serial"
 step "Genesis 1.3 v4 starts" bash -c "$(declare -f starts); starts 'genesis' /simcodes/Genesis/genesis4 -h"
+step "HiPACE++ starts (AMReX initialises)" bash -c "$(declare -f starts); starts 'AMReX .* initialized' /simcodes/HiPACE/hipace"
+
+cat > ptarmigan.yml <<'EOF'
+control:
+  radiation_reaction: true
+  pair_creation: false
+laser:
+  a0: 1.0
+  wavelength: 0.8e-6
+  envelope: flattop
+  n_cycles: 4
+  polarization: linear
+beam:
+  n: 1000
+  species: electron
+  charge: 1.0e8 * e
+  gamma: 1000.0
+  radius: [0.5e-6, uniformly_distributed]
+  length: 0.5e-6
+output:
+  ident: smoke
+  dump_all_particles: hdf5
+  coordinate_system: beam
+  units: auto
+EOF
+step "Ptarmigan collides a beam with a laser and writes HDF5" bash -c '/simcodes/Ptarmigan/ptarmigan ptarmigan.yml && test -s smoke_particles.h5'
 
 printf 'OPTION, INFO=FALSE;\nTITLE, STRING="smoke";\nValue, {1+1};\nSTOP;\n' > smoke.in
 step "OPAL reports its version" bash -c '/simcodes/OPAL-install/bin/opal --version | grep -q 2024'
@@ -105,6 +131,20 @@ import cheetah, torch
 seg = cheetah.Segment([cheetah.Drift(length=torch.tensor(1.0)), cheetah.Quadrupole(length=torch.tensor(0.2), k1=torch.tensor(1.5))])
 out = seg.track(cheetah.ParticleBeam.from_parameters(num_particles=torch.tensor(1000)))"
 step "Wake-T imports" python -c "import wake_t"
+step "ImpactX tracks a beam" python -c "
+from impactx import ImpactX, distribution, elements
+sim = ImpactX(); sim.particle_shape = 2; sim.space_charge = 'false'; sim.diagnostics = False; sim.verbose = 0; sim.tiny_profiler = False
+sim.init_grids()
+sim.beam.ref.set_charge_qe(-1.0).set_mass_MeV(0.51099895).set_kin_energy_MeV(100.0)
+sim.add_particles(1e-12, distribution.Waterbag(lambdaX=1e-4, lambdaY=1e-4, lambdaT=1e-3, lambdaPx=1e-4, lambdaPy=1e-4, lambdaPt=1e-3), 1000)
+sim.lattice.extend([elements.Drift(name='d', ds=1.0, nslice=1), elements.Quad(name='q', ds=0.2, k=1.5, nslice=1)])
+sim.track_particles(); assert abs(sim.beam.ref.s - 1.2) < 1e-9, sim.beam.ref.s
+sim.finalize()"
+step "FBPIC takes two PIC steps on the CPU" python -c "
+from fbpic.main import Simulation
+sim = Simulation(Nz=32, zmax=10e-6, Nr=16, rmax=10e-6, Nm=2, dt=1e-15, zmin=0, use_cuda=False, verbose_level=0)
+sim.step(2)"
+step "Slipstream imports what SIMBA uses" python -c "import slipstream.tracking.native.linac, slipstream.tracking.native.laura_import"
 cat > fodo.bmad <<'EOF'
 beginning[beta_a] = 10
 beginning[beta_b] = 10
@@ -123,7 +163,7 @@ tao = Tao('-lat fodo.bmad -noplot'); assert tao.lat_list('*', 'ele.name')"
 
 #### the layout SIMBA finds the codes in when it runs inside the image (simcodes=$SIMCODES, no container runtime)
 step "SIMCODES and TAO_DIR are set" bash -c 'test "$SIMCODES" = /simba-codes && test -d "$TAO_DIR"'
-step "elegant and Pelegant are on PATH" bash -c 'command -v elegant && command -v Pelegant'
+step "elegant, Pelegant, ptarmigan and hipace are on PATH" bash -c 'command -v elegant && command -v Pelegant && command -v ptarmigan && command -v hipace'
 step "SIMBA's posix layout resolves every code" bash -c '
     for f in ASTRA/Astra ASTRA/generator CSRTrack/csrtrack_1.204_Linux_x86_64_serial Genesis/genesis4 OPAL/bin/opal Bmad/lib/libtao.so; do
         test -x "$SIMCODES/$f" || { echo "missing or not executable: $SIMCODES/$f"; exit 1; }

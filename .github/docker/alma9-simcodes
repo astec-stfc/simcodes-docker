@@ -136,6 +136,21 @@ RUN git clone https://github.com/OPALX-project/OPAL.git && \
     make install
 
 #########################################################################
+# Ptarmigan (Rust), in a stage of its own so that it does not touch the build above
+#########################################################################
+# serial, with HDF5 (SIMBA writes its beam to, and reads the result from, HDF5 files); the git checkout is needed,
+# its build script asks git for the version
+FROM almalinux/9-minimal AS ptarmigan
+ARG PTARMIGAN_VERSION=v1.6.1
+RUN microdnf install wget dnf -y && microdnf clean all && \
+    dnf install epel-release -y -q && \
+    dnf install -y -q git cargo gcc hdf5-devel && \
+    git clone --depth 1 --branch "$PTARMIGAN_VERSION" https://github.com/tgblackburn/ptarmigan.git /tmp/ptarmigan && \
+    cd /tmp/ptarmigan && \
+    cargo build --release --features hdf5-output -j4 && \
+    install -D target/release/ptarmigan /simcodes/Ptarmigan/ptarmigan
+
+#########################################################################
 #########################################################################
 # The image: run-time libraries, the installed codes, and conda
 #########################################################################
@@ -172,6 +187,7 @@ COPY --from=build /simcodes/CSRTrack-parallel /simcodes/CSRTrack-parallel
 COPY --from=build /simcodes/openmpi-4.0.3-install /simcodes/openmpi-4.0.3-install
 COPY --from=build /simcodes/OPAL-install /simcodes/OPAL-install
 COPY --from=build /usr/local/lib /usr/local/lib
+COPY --from=ptarmigan /simcodes/Ptarmigan /simcodes/Ptarmigan
 
 #########################################################################
 # Download and install Miniconda
@@ -182,8 +198,9 @@ RUN wget --no-verbose https://repo.anaconda.com/miniconda/Miniconda3-latest-Linu
 
 # Add conda to PATH
 ENV PATH=/opt/conda/bin:$PATH
-# Astra-parallel is linked against HDF5 1.14 (libhdf5.so.310); EL9 only ships 1.12,
-# but conda's genesis4 package pulls in a matching HDF5, so reuse it here.
+# Last on LD_LIBRARY_PATH for Python: a pip wheel (torch, ...) has no RPATH to conda's libstdc++, so without this it
+# loads the system's older one first, and conda's h5py, which needs the newer one, then fails to import.  (Nothing
+# compiled above needs it: Astra-parallel links no HDF5, and the conda programs find their own libraries by RPATH.)
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/conda/lib
 
 # Initialise conda
@@ -205,24 +222,38 @@ RUN conda install ipython numpy h5py pydantic bmad pytao -c conda-forge -y --qui
 #########################################################################
 # Genesis
 #########################################################################
-# this build, not the other mpi_openmpi one: it keeps HDF5 1.14 (libhdf5.so.310), which Astra-parallel borrows from
-# /opt/conda/lib; the other is on HDF5 2.x
-RUN conda install genesis4=4.6.16=mpi_openmpi_h3002a45_100 -c conda-forge -y --quiet && \
+RUN conda install genesis4=4.6.16 -c conda-forge -y --quiet && \
     conda clean -afy && \
     mkdir -p /simcodes/Genesis && \
     ln -s /opt/conda/bin/genesis4 /simcodes/Genesis/genesis4
 
 #########################################################################
+# ImpactX (a Python module, so next to SIMBA) and HiPACE++ (a program, in an environment of its own: it is built
+# against another AMReX than ImpactX)
+#########################################################################
+# nompi: SIMBA runs ImpactX in its own process.  conda-forge builds both for x86-64-v3 (AVX2) CPUs.
+RUN conda install "impactx=26.10=nompi*" -c conda-forge -y --quiet && \
+    conda create -n hipace "hipace=26.05" -c conda-forge -y --quiet && \
+    conda clean -afy && \
+    mkdir -p /simcodes/HiPACE && \
+    ln -s /opt/conda/envs/hipace/bin/hipace.NOMPI.OMP.DP.LF /simcodes/HiPACE/hipace
+
+#########################################################################
 # SIMBA and the Python simulation codes
 #########################################################################
-# SIMBA's own `simcodes` extra (Ocelot, Xsuite, Cheetah, Wake-T, cpymad, ...), so the image has the versions SIMBA
-# asks for, and SIMBA itself for running inside the image.  The latest release by default; e.g.
-# --build-arg SIMBA_SPEC="simba-accelerator[simcodes]==0.7.2", or a git URL, for another.
-# Cheetah needs torch, and torch from PyPI brings the CUDA libraries (several GB); the image runs on CPUs, so the CPU
-# build goes in first and pip keeps it.
-ARG SIMBA_SPEC="simba-accelerator[simcodes]"
+# SIMBA's own `simcodes` and `fbpic` extras (Ocelot, Xsuite, Cheetah, Wake-T, cpymad, FBPIC, ...), so the image has
+# the versions SIMBA asks for, and SIMBA itself for running inside the image.  The latest release by default; e.g.
+# --build-arg SIMBA_SPEC="simba-accelerator[simcodes,fbpic]==0.7.2", or a git URL, for another.  Then Slipstream
+# (a GitHub release, not on PyPI).  FBPIC runs on the CPU here (a GPU needs cupy).
+# RF-Track is not here: its licence (CERN proprietary, free to use) does not say it may be redistributed, so users
+# `pip install RF_Track` themselves.
+# Cheetah and Slipstream need torch, and torch from PyPI brings the CUDA libraries (several GB); the image runs on
+# CPUs, so the CPU build goes in first and pip keeps it.
+ARG SIMBA_SPEC="simba-accelerator[simcodes,fbpic]"
+ARG SLIPSTREAM_VERSION=v1.1.0
 RUN /opt/conda/bin/pip install --no-cache-dir --quiet torch --index-url https://download.pytorch.org/whl/cpu && \
-    /opt/conda/bin/pip install --no-cache-dir --quiet "$SIMBA_SPEC"
+    /opt/conda/bin/pip install --no-cache-dir --quiet "$SIMBA_SPEC" \
+        "slipstream-accel @ https://github.com/astec-stfc/slipstream/archive/refs/tags/${SLIPSTREAM_VERSION}.tar.gz"
 
 #########################################################################
 # Verify every code/package installed above is actually usable
@@ -231,24 +262,28 @@ RUN /opt/conda/bin/pip install --no-cache-dir --quiet torch --index-url https://
 # an ABI no longer available on any current distro; it isn't wired into SIMBA's
 # docker/apptainer Executables.yaml (only serial CSRTrack is), so it's kept for
 # reference but excluded from this executability gate.
+# ldd is given the real file: the conda programs are linked here, and their RPATH ($ORIGIN/../lib) is relative to the
+# real file, as it is when they run, but ldd would take it relative to the link.
 RUN set -e; \
     for f in \
         /simcodes/Astra-serial/Astra /simcodes/Astra-serial/generator /simcodes/Astra-parallel/Astra \
         /simcodes/CSRTrack-serial/csrtrack_1.204_Linux_x86_64_serial \
         /simcodes/elegant/bin/Linux-x86_64/elegant /simcodes/elegant/bin/Linux-x86_64/Pelegant \
-        /simcodes/OPAL-install/bin/opal /simcodes/Genesis/genesis4; \
+        /simcodes/OPAL-install/bin/opal /simcodes/Genesis/genesis4 /simcodes/HiPACE/hipace /simcodes/Ptarmigan/ptarmigan; \
     do \
         test -x "$f" || { echo "NOT EXECUTABLE: $f"; exit 1; }; \
-        if ldd -r "$f" 2>&1 | grep -qE "not found|undefined symbol"; then \
-            echo "MISSING SHARED LIBRARIES OR SYMBOLS for $f:"; ldd -r "$f"; exit 1; \
+        r=$(readlink -f "$f"); \
+        if ldd -r "$r" 2>&1 | grep -qE "not found|undefined symbol"; then \
+            echo "MISSING SHARED LIBRARIES OR SYMBOLS for $f:"; ldd -r "$r"; exit 1; \
         fi; \
     done; \
     echo "All simulation code binaries present, executable, and fully linked"
 
 RUN /opt/conda/bin/python3 -c "\
-import ocelot, xsuite, cheetah, wake_t, cpymad, torch, importlib.metadata as md, simba.Framework; \
+import ocelot, xsuite, cheetah, wake_t, cpymad, torch, impactx, fbpic, slipstream, importlib.metadata as md, simba.Framework; \
 assert not torch.cuda.is_available() and '+cpu' in torch.__version__, torch.__version__; \
 print('simba', md.version('simba-accelerator')); \
+print('impactx', md.version('impactx'), 'fbpic', md.version('fbpic'), 'slipstream', md.version('slipstream-accel')); \
 print('ocelot', ocelot.__version__); \
 print('xsuite', xsuite.__version__); \
 print('cheetah', cheetah.__version__); \
@@ -260,7 +295,8 @@ print('cpymad', cpymad.__version__)"
 #########################################################################
 # SIMBA looks for its codes under <simcodes>/<NAME>/ (the `posix` section of its Executables.yaml); the codes above
 # are built under other names, so the directories SIMBA expects are links to them.  `elegant` and `Pelegant` are
-# looked up on PATH.  The OPAL profile script that SIMBA sources has nothing to set: the image has the environment.
+# looked up on PATH, and so are `ptarmigan` and `hipace`.  The OPAL profile script that SIMBA sources has nothing to
+# set: the image has the environment.
 RUN mkdir -p /simba-codes/OPAL/bin /simba-codes/OPAL/etc/profile.d && \
     ln -s /simcodes/Astra-serial /simba-codes/ASTRA && \
     ln -s /simcodes/CSRTrack-serial /simba-codes/CSRTrack && \
@@ -269,7 +305,9 @@ RUN mkdir -p /simba-codes/OPAL/bin /simba-codes/OPAL/etc/profile.d && \
     ln -s /simcodes/OPAL-install/bin/opal /simba-codes/OPAL/bin/opal && \
     echo "# nothing to set: the image has the environment" > /simba-codes/OPAL/etc/profile.d/opal.sh && \
     ln -s /simcodes/elegant/bin/Linux-x86_64/elegant /usr/local/bin/elegant && \
-    ln -s /simcodes/elegant/bin/Linux-x86_64/Pelegant /usr/local/bin/Pelegant
+    ln -s /simcodes/elegant/bin/Linux-x86_64/Pelegant /usr/local/bin/Pelegant && \
+    ln -s /simcodes/Ptarmigan/ptarmigan /usr/local/bin/ptarmigan && \
+    ln -s /simcodes/HiPACE/hipace /usr/local/bin/hipace
 ENV SIMCODES=/simba-codes
 ENV TAO_DIR=/opt/conda/share/doc/tao/
 
@@ -278,6 +316,8 @@ ENV TAO_DIR=/opt/conda/share/doc/tao/
 #########################################################################
 ENV DISPLAY=host.docker.internal:0.0
 
-# numba (Wake-T) caches its JIT next to the source, which a non-root user (`docker run --user`) cannot write.  Last,
-# so no build step creates the directory as root.
+# numba (Wake-T, FBPIC) caches its JIT next to the source, and Slipstream sets up torch's compile cache in ~/.cache:
+# neither is writable by a user without a home (`docker run --user`).  Last, so no build step creates them as root.
 ENV NUMBA_CACHE_DIR=/tmp/numba-cache
+ENV TORCHINDUCTOR_CACHE_DIR=/tmp/torch-cache/inductor
+ENV TRITON_CACHE_DIR=/tmp/torch-cache/triton
